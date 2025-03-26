@@ -428,7 +428,7 @@ insertTable.DatabaseConnectorDbiConnection <- function(connection,
   }
   isSqlReservedWord(c(tableName, colnames(data)), warn = TRUE)
   
-  tableName <- gsub("^#", "", tableName)
+  #tableName <- gsub("^#", "", tableName)
   if (dbms(connection) == "sqlite") {
     # Convert dates and datetime to UNIX timestamp:
     for (i in 1:ncol(data)) {
