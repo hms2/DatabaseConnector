@@ -127,6 +127,61 @@ for (testServer in testServers) {
   })
 }
 
+test_that("DBI insertTable keeps the # prefix of temp tables for odbc SQL Server only", {
+  skip_if_not_installed("odbc")
+  skip_if_not_installed("RSQLite")
+  # odbc's SQL Server backend only creates a temp table when the name starts with "#",
+  # while other DBI drivers expect the bare name plus temporary = TRUE.
+  tableNames <- c()
+  local_mocked_bindings(
+    dbWriteTable = function(conn, name, value, ...) {
+      tableNames <<- c(tableNames, if (is(name, "Id")) name@name[["table"]] else name)
+      invisible(TRUE)
+    },
+    .package = "DBI"
+  )
+  sqlServerClass <- methods::getClass("Microsoft SQL Server", where = asNamespace("odbc"))
+  methods::setClass("TestSqlServerConnection", contains = sqlServerClass, where = environment())
+  sqlServerConnection <- methods::new("TestSqlServerConnection")
+  attr(sqlServerConnection, "dbms") <- "sql server"
+  data <- data.frame(x = 1:3)
+  
+  insertTable(sqlServerConnection, tableName = "#temp", data = data, tempTable = TRUE)
+  insertTable(sqlServerConnection, tableName = "temp", data = data, tempTable = TRUE)
+  insertTable(sqlServerConnection, tableName = "permanent", data = data, tempTable = FALSE)
+  expect_equal(tableNames, c("#temp", "#temp", "permanent"))
+  
+  tableNames <- c()
+  sqliteConnection <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+  on.exit(DBI::dbDisconnect(sqliteConnection), add = TRUE)
+  insertTable(sqliteConnection, tableName = "#temp", data = data, tempTable = TRUE)
+  expect_equal(tableNames, "temp")
+})
+
+test_that("DBI insertTable creates a temp table on odbc SQL Server", {
+  skip_if_not_installed("odbc")
+  skip_if(Sys.getenv("CDM5_SQL_SERVER_SERVER") == "", "No SQL Server test server")
+  drivers <- unique(odbc::odbcListDrivers()$name)
+  driver <- drivers[grepl("SQL Server", drivers)][1]
+  skip_if(is.na(driver), "No ODBC driver for SQL Server")
+  serverParts <- strsplit(Sys.getenv("CDM5_SQL_SERVER_SERVER"), ";")[[1]]
+  connection <- connect(createDbiConnectionDetails(
+    dbms = "sql server",
+    drv = odbc::odbc(),
+    Driver = driver,
+    Server = serverParts[1],
+    UID = Sys.getenv("CDM5_SQL_SERVER_USER"),
+    PWD = URLdecode(Sys.getenv("CDM5_SQL_SERVER_PASSWORD")),
+    TrustServerCertificate = "yes"
+  ))
+  on.exit(disconnect(connection))
+  insertTable(connection, tableName = "#temp_odbc", data = data.frame(x = 1:3), tempTable = TRUE)
+  tempCount <- renderTranslateQuerySql(connection, "SELECT COUNT(*) AS n FROM #temp_odbc;")
+  expect_equal(tempCount[1, 1], 3)
+  permanentCount <- querySql(connection, "SELECT COUNT(*) AS n FROM sys.tables WHERE name = 'temp_odbc';")
+  expect_equal(permanentCount[1, 1], 0)
+})
+
 test_that("Logging insertTable times", {
   skip_if_not_installed("ParallelLogger")
   log <- readLines(logFileName)

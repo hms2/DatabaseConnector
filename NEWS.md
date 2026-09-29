@@ -5,6 +5,8 @@ Bugfixes:
 
 1. Fixed Spark (DataBricks) bulk upload of complex (JSON) strings.
 
+2. Fixed `insertTable()` creating a permanent table instead of a temp table on DBI connections to SQL Server via `odbc`.
+
 
 DatabaseConnector 7.2.0
 =======================

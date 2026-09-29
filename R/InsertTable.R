@@ -462,7 +462,15 @@ insertTable.default <- function(connection,
   }
   isSqlReservedWord(c(tableName, colnames(data)), warn = TRUE)
   
-  tableName <- gsub("^#", "", tableName)
+  if (inherits(connection, "Microsoft SQL Server")) {
+    # odbc's SQL Server backend ignores `temporary` and only creates a temp table
+    # when the table name itself starts with "#", so keep (or add) the prefix:
+    if (tempTable & substr(tableName, 1, 1) != "#") {
+      tableName <- paste0("#", tableName)
+    }
+  } else {
+    tableName <- gsub("^#", "", tableName)
+  }
   if (dbms(connection) == "sqlite") {
     # Convert dates and datetime to UNIX timestamp:
     for (i in 1:ncol(data)) {
